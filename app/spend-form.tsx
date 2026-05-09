@@ -124,26 +124,33 @@ const sanitizeForm = (value: unknown): SpendForm => {
   };
 };
 
-const getInitialFormState = (): SpendForm => {
-  if (typeof window === "undefined") {
-    return DEFAULT_FORM;
-  }
-
-  try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? sanitizeForm(JSON.parse(saved)) : DEFAULT_FORM;
-  } catch {
-    return DEFAULT_FORM;
-  }
-};
 
 export default function SpendFormPage() {
-  const [form, setForm] = useState<SpendForm>(getInitialFormState);
+  const [isMounted, setIsMounted] = useState(false);
+  const [form, setForm] = useState<SpendForm>(DEFAULT_FORM);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
-  }, [form]);
+    const rafId = window.requestAnimationFrame(() => {
+      setIsMounted(true);
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          setForm(sanitizeForm(JSON.parse(saved)));
+        }
+      } catch {
+        setForm(DEFAULT_FORM);
+      }
+    });
 
+    return () => window.cancelAnimationFrame(rafId);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+  }, [form, isMounted]);
   const totalSpend = useMemo(() => {
     return form.tools.reduce((acc, tool) => {
       const parsed = Number.parseFloat(tool.monthlySpend);
@@ -383,7 +390,9 @@ export default function SpendFormPage() {
 
           <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-sky-100 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-700">
-              All changes are auto-saved in local storage.
+              {isMounted
+                ? "All changes are auto-saved in local storage."
+                : "Loading saved state."}
             </p>
             <p className="text-base font-semibold text-slate-900">
               Total Monthly Spend: ${totalSpend.toFixed(2)}
