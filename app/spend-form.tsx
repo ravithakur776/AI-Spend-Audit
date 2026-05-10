@@ -1,17 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-type PrimaryUseCase = "coding" | "writing" | "data" | "research" | "mixed";
-type ToolName =
-  | "Cursor"
-  | "GitHub Copilot"
-  | "Claude"
-  | "ChatGPT"
-  | "Anthropic API"
-  | "OpenAI API"
-  | "Gemini"
-  | "Windsurf";
+import {
+  calculateAudit,
+  type AuditInput,
+  type AuditResult,
+  type PrimaryUseCase,
+  type ToolName,
+} from "@/lib/auditEngine";
 
 type ToolEntry = {
   id: string;
@@ -50,7 +46,7 @@ const USE_CASE_OPTIONS: PrimaryUseCase[] = [
 
 const PLAN_OPTIONS_BY_TOOL: Record<ToolName, string[]> = {
   Cursor: ["Free", "Pro", "Business", "Enterprise"],
-  "GitHub Copilot": ["Free", "Pro", "Business", "Enterprise"],
+  "GitHub Copilot": ["Individual", "Business", "Enterprise"],
   Claude: ["Free", "Pro", "Team", "Enterprise"],
   ChatGPT: ["Free", "Plus", "Team", "Enterprise"],
   "Anthropic API": ["Free Trial", "Pay As You Go", "Enterprise Contract"],
@@ -72,6 +68,18 @@ const DEFAULT_FORM: SpendForm = {
   primaryUseCase: "",
   tools: [createEmptyTool()],
 };
+
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+const currencyPrecise = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
 
 const isToolName = (value: string): value is ToolName =>
   TOOL_OPTIONS.includes(value as ToolName);
@@ -124,10 +132,39 @@ const sanitizeForm = (value: unknown): SpendForm => {
   };
 };
 
+const parseSeats = (value: string): number => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const parseSpend = (value: string): number => {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const toAuditInput = (form: SpendForm): AuditInput => {
+  const tools = form.tools
+    .filter((tool) => tool.toolName && tool.planType)
+    .map((tool) => ({
+      toolName: tool.toolName as ToolName,
+      currentPlan: tool.planType,
+      seats: parseSeats(tool.seats),
+      currentMonthlySpend: parseSpend(tool.monthlySpend),
+    }));
+
+  return {
+    teamSize: parseSeats(form.teamSize),
+    primaryUseCase: form.primaryUseCase || "mixed",
+    tools,
+  };
+};
 
 export default function SpendFormPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [form, setForm] = useState<SpendForm>(DEFAULT_FORM);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  const [view, setView] = useState<"form" | "results">("form");
+  const [notificationEmail, setNotificationEmail] = useState("");
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -144,18 +181,15 @@ export default function SpendFormPage() {
 
     return () => window.cancelAnimationFrame(rafId);
   }, []);
-
   useEffect(() => {
     if (!isMounted) {
       return;
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
   }, [form, isMounted]);
-  const totalSpend = useMemo(() => {
-    return form.tools.reduce((acc, tool) => {
-      const parsed = Number.parseFloat(tool.monthlySpend);
-      return Number.isFinite(parsed) ? acc + parsed : acc;
-    }, 0);
+
+  const currentTotalSpend = useMemo(() => {
+    return form.tools.reduce((acc, tool) => acc + parseSpend(tool.monthlySpend), 0);
   }, [form.tools]);
 
   const updateTool = (id: string, field: keyof ToolEntry, value: string) => {
@@ -196,6 +230,123 @@ export default function SpendFormPage() {
     }));
   };
 
+  const handleSubmitAudit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = calculateAudit(toAuditInput(form));
+    setAuditResult(result);
+    setView("results");
+  };
+
+  const isHighSavings = (auditResult?.totalMonthlySavings ?? 0) > 500;
+  const isLowSavings = (auditResult?.totalMonthlySavings ?? 0) < 100;
+
+  if (view === "results" && auditResult) {
+    return (
+      <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+          <section className="overflow-hidden rounded-3xl border border-sky-400/30 bg-linear-to-br from-sky-500/20 via-indigo-500/15 to-cyan-500/10 p-8 shadow-2xl shadow-black/40 sm:p-10">
+            <p className="text-xs font-semibold tracking-[0.24em] text-sky-200 uppercase">
+              Audit Results
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+              You have a clear savings opportunity.
+            </h1>
+
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur">
+                <p className="text-xs tracking-wide text-slate-300 uppercase">
+                  Total Monthly Savings
+                </p>
+                <p className="mt-3 text-4xl font-black text-white sm:text-6xl">
+                  {currency.format(auditResult.totalMonthlySavings)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 p-5 backdrop-blur">
+                <p className="text-xs tracking-wide text-emerald-100 uppercase">
+                  Total Annual Savings
+                </p>
+                <p className="mt-3 text-4xl font-black text-emerald-100 sm:text-6xl">
+                  {currency.format(auditResult.totalAnnualSavings)}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {isHighSavings && (
+            <section className="rounded-2xl border border-amber-300/40 bg-linear-to-r from-amber-300/15 to-orange-300/15 p-5 sm:p-6">
+              <p className="text-lg font-semibold text-amber-100 sm:text-xl">
+                Stop wasting {currency.format(auditResult.totalAnnualSavings)}/yr. Credex can help you capture these savings instantly.
+              </p>
+              <button
+                type="button"
+                className="mt-4 inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+              >
+                Book Credex Consultation
+              </button>
+            </section>
+          )}
+
+          {isLowSavings && (
+            <section className="rounded-2xl border border-emerald-300/40 bg-emerald-400/10 p-5 sm:p-6">
+              <p className="text-lg font-semibold text-emerald-100">
+                You are spending well! Your stack is nearly optimal.
+              </p>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="email"
+                  value={notificationEmail}
+                  onChange={(event) => setNotificationEmail(event.target.value)}
+                  placeholder="Notify me when new optimizations apply"
+                  className="w-full rounded-xl border border-emerald-200/40 bg-slate-950/40 px-3 py-2.5 text-sm text-white outline-none placeholder:text-emerald-100/60 focus:border-emerald-200 focus:ring-4 focus:ring-emerald-200/20"
+                />
+                <button
+                  type="button"
+                  className="rounded-xl border border-emerald-200/70 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-100/10"
+                >
+                  Notify Me
+                </button>
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-2xl font-semibold text-white">Tool-by-Tool Breakdown</h2>
+              <button
+                type="button"
+                onClick={() => setView("form")}
+                className="rounded-xl border border-slate-400/50 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+              >
+                Edit Inputs
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {auditResult.breakdown.map((item, index) => (
+                <article
+                  key={`${item.recommendedAction}-${index}`}
+                  className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-medium text-slate-300">Current Spend &rarr; Recommended Action</p>
+                    <p className="text-lg font-bold text-emerald-300">
+                      +{currencyPrecise.format(item.savingsMonthly)}
+                    </p>
+                  </div>
+
+                  <p className="mt-3 text-base font-semibold text-white">
+                    {currencyPrecise.format(item.currentSpend)} &rarr; {item.recommendedAction}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-300">{item.reason}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-linear-to-br from-sky-50 via-white to-indigo-100 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6">
@@ -213,12 +364,13 @@ export default function SpendFormPage() {
           </p>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <form
+          onSubmit={handleSubmitAudit}
+          className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+        >
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">
-                Team Size
-              </span>
+              <span className="text-sm font-medium text-slate-700">Team Size</span>
               <input
                 type="number"
                 min="1"
@@ -236,9 +388,7 @@ export default function SpendFormPage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">
-                Primary Use Case
-              </span>
+              <span className="text-sm font-medium text-slate-700">Primary Use Case</span>
               <select
                 value={form.primaryUseCase}
                 onChange={(event) =>
@@ -263,9 +413,7 @@ export default function SpendFormPage() {
 
           <div className="mt-8 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">
-                AI Tools
-              </h2>
+              <h2 className="text-lg font-semibold text-slate-900">AI Tools</h2>
               <button
                 type="button"
                 onClick={addTool}
@@ -286,9 +434,7 @@ export default function SpendFormPage() {
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
                 >
                   <div className="mb-4 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-700">
-                      Tool #{index + 1}
-                    </p>
+                    <p className="text-sm font-semibold text-slate-700">Tool #{index + 1}</p>
                     <button
                       type="button"
                       onClick={() => removeTool(tool.id)}
@@ -301,9 +447,7 @@ export default function SpendFormPage() {
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Tool Name
-                      </span>
+                      <span className="text-sm font-medium text-slate-700">Tool Name</span>
                       <select
                         value={tool.toolName}
                         onChange={(event) =>
@@ -321,9 +465,7 @@ export default function SpendFormPage() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Plan Type
-                      </span>
+                      <span className="text-sm font-medium text-slate-700">Plan Type</span>
                       <select
                         value={tool.planType}
                         disabled={!tool.toolName}
@@ -344,9 +486,7 @@ export default function SpendFormPage() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Number of Seats
-                      </span>
+                      <span className="text-sm font-medium text-slate-700">Number of Seats</span>
                       <input
                         type="number"
                         min="1"
@@ -361,9 +501,7 @@ export default function SpendFormPage() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Current Monthly Spend
-                      </span>
+                      <span className="text-sm font-medium text-slate-700">Current Monthly Spend</span>
                       <div className="relative">
                         <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-500">
                           $
@@ -388,17 +526,26 @@ export default function SpendFormPage() {
             })}
           </div>
 
-          <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-sky-100 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-700">
               {isMounted
                 ? "All changes are auto-saved in local storage."
-                : "Loading saved state."}
+                : "Loading saved state..."}
             </p>
             <p className="text-base font-semibold text-slate-900">
-              Total Monthly Spend: ${totalSpend.toFixed(2)}
+              Current Monthly Spend: {currencyPrecise.format(currentTotalSpend)}
             </p>
           </div>
-        </section>
+
+          <div className="mt-5 flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300"
+            >
+              Run Spend Audit
+            </button>
+          </div>
+        </form>
       </main>
     </div>
   );
