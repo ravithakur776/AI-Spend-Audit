@@ -81,6 +81,9 @@ const currencyPrecise = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const FALLBACK_SUMMARY =
+  "Based on our analysis, your AI stack requires optimization. We have identified several key areas where plan adjustments or tool consolidation can yield significant monthly savings.";
+
 const isToolName = (value: string): value is ToolName =>
   TOOL_OPTIONS.includes(value as ToolName);
 
@@ -165,6 +168,8 @@ export default function SpendFormPage() {
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [view, setView] = useState<"form" | "results">("form");
   const [notificationEmail, setNotificationEmail] = useState("");
+  const [aiSummary, setAiSummary] = useState("");
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -181,12 +186,56 @@ export default function SpendFormPage() {
 
     return () => window.cancelAnimationFrame(rafId);
   }, []);
+
   useEffect(() => {
     if (!isMounted) {
       return;
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
   }, [form, isMounted]);
+
+  useEffect(() => {
+    if (view !== "results" || !auditResult) {
+      return;
+    }
+
+    let cancelled = false;
+    const rafId = window.requestAnimationFrame(() => {
+      void (async () => {
+        try {
+          const response = await fetch("/api/generate-summary", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              auditResult,
+              teamSize: parseSeats(form.teamSize),
+              primaryUseCase: form.primaryUseCase || "mixed",
+            }),
+          });
+
+          const data = (await response.json()) as { summary?: string };
+          if (!cancelled) {
+            setAiSummary(data.summary || FALLBACK_SUMMARY);
+          }
+        } catch {
+          if (!cancelled) {
+            setAiSummary(FALLBACK_SUMMARY);
+          }
+        } finally {
+          if (!cancelled) {
+            setIsSummaryLoading(false);
+          }
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [auditResult, form.primaryUseCase, form.teamSize, view]);
 
   const currentTotalSpend = useMemo(() => {
     return form.tools.reduce((acc, tool) => acc + parseSpend(tool.monthlySpend), 0);
@@ -233,6 +282,8 @@ export default function SpendFormPage() {
   const handleSubmitAudit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const result = calculateAudit(toAuditInput(form));
+    setAiSummary("");
+    setIsSummaryLoading(true);
     setAuditResult(result);
     setView("results");
   };
@@ -270,6 +321,17 @@ export default function SpendFormPage() {
                 </p>
               </div>
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
+            <p className="text-xs font-semibold tracking-[0.2em] text-sky-200 uppercase">
+              AI Auditor Summary
+            </p>
+            <p className="mt-3 text-sm leading-7 text-slate-200 sm:text-base">
+              {isSummaryLoading
+                ? "Generating personalized audit summary..."
+                : aiSummary || FALLBACK_SUMMARY}
+            </p>
           </section>
 
           {isHighSavings && (
