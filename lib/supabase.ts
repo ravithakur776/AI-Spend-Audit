@@ -1,29 +1,10 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-let client: SupabaseClient | null = null;
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export type StoredAuditData = {
   auditInput: unknown;
   auditResult: unknown;
+  aiSummary: string;
   createdAt: string;
-};
-
-export const getSupabaseClient = (): SupabaseClient => {
-  if (client) {
-    return client;
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anonKey) {
-    throw new Error(
-      "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-    );
-  }
-
-  client = createClient(url, anonKey);
-  return client;
 };
 
 export type SaveAuditLeadInput = {
@@ -34,18 +15,24 @@ export type SaveAuditLeadInput = {
   auditData: StoredAuditData;
 };
 
-export const saveAuditLead = async (input: SaveAuditLeadInput): Promise<void> => {
+export const saveAuditLead = async (input: SaveAuditLeadInput): Promise<string> => {
   const supabase = getSupabaseClient();
 
-  const { error } = await supabase.from("audits").insert({
-    email: input.email,
-    company: input.company || null,
-    role: input.role || null,
-    team_size: input.teamSize,
-    audit_data: input.auditData,
-  });
+  const { data, error } = await supabase
+    .from("audits")
+    .insert({
+      email: input.email,
+      company: input.company || null,
+      role: input.role || null,
+      team_size: input.teamSize,
+      audit_data: input.auditData,
+    })
+    .select("id")
+    .single<{ id: string }>();
 
-  if (error) {
-    throw new Error(error.message);
+  if (error || !data?.id) {
+    throw new Error(error?.message || "Failed to save audit lead");
   }
+
+  return data.id;
 };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import type { AuditInput, AuditResult } from "@/lib/auditEngine";
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 type AuditPageParams = {
   id: string;
@@ -19,7 +19,11 @@ type PublicAuditRecord = {
   createdAt: string | null;
   auditInput: AuditInput;
   auditResult: AuditResult;
+  aiSummary: string;
 };
+
+const FALLBACK_SUMMARY =
+  "Based on our analysis, your AI stack requires optimization. We have identified several key areas where plan adjustments or tool consolidation can yield significant monthly savings.";
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -67,6 +71,7 @@ const toPublicAuditRecord = (row: SupabaseAuditRow): PublicAuditRecord | null =>
   const payload = row.audit_data as {
     auditInput?: unknown;
     auditResult?: unknown;
+    aiSummary?: unknown;
   };
 
   if (!isAuditInput(payload.auditInput) || !isAuditResult(payload.auditResult)) {
@@ -78,6 +83,10 @@ const toPublicAuditRecord = (row: SupabaseAuditRow): PublicAuditRecord | null =>
     createdAt: row.created_at,
     auditInput: payload.auditInput,
     auditResult: payload.auditResult,
+    aiSummary:
+      typeof payload.aiSummary === "string" && payload.aiSummary.trim().length > 0
+        ? payload.aiSummary
+        : FALLBACK_SUMMARY,
   };
 };
 
@@ -196,6 +205,11 @@ export default async function SharedAuditPage({
               Generated on {new Date(audit.createdAt).toLocaleDateString("en-US")}
             </p>
           )}
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+          <h2 className="text-2xl font-semibold text-white">AI Summary</h2>
+          <p className="mt-4 text-sm leading-7 text-slate-200 sm:text-base">{audit.aiSummary}</p>
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
