@@ -7,15 +7,10 @@ export const getSupabaseClient = (): SupabaseClient => {
     return supabaseClient;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = "https://icxztrlqjgzldmhlcifj.supabase.co";
+  const supabaseKey =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljeHp0cmxxamd6bGRtaGxjaWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0Njc4MzEsImV4cCI6MjA5NDA0MzgzMX0.23mXBQDllBe4CQT_iVPBAPfcUnKLMnjZdhm8zW-r4J8";
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-    );
-  }
-
-  supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+  supabaseClient = createClient(supabaseUrl, supabaseKey);
   return supabaseClient;
 };
