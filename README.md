@@ -1,49 +1,47 @@
-# AI Spend Audit
+# 🚀 AI Spend Audit | B2B SaaS MVP
 
-A free web application designed to help startup founders and engineering managers audit their AI tool subscriptions (Cursor, Claude, ChatGPT, etc.). By analyzing team size, primary use cases, and current monthly spend, this tool provides real-world benchmarks and identifies actionable monthly and annual savings.
+> **Stop bleeding money on redundant AI subscriptions. A financial audit engine for modern engineering teams.**
 
----
+## 📋 Table of Contents
+- [The Problem](#-the-problem)
+- [The Solution](#-the-solution)
+- [Key Features](#-key-features)
+- [Strategic Documentation](#-strategic-documentation)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Roadmap](#-roadmap)
 
-## 🚀 Live Demo & Visuals
-> **Status:** 🚧 Active Development (Day 1 of 7)
->
-> *Note for Reviewers: The live deployed URL and application screenshots/demo video will be updated here prior to the final submission deadline as per the project timeline.*
+## 🚨 The Problem
+Modern engineering teams are unknowingly stacking overlapping AI tools. A single team might pay for **Cursor (Pro)**, **GitHub Copilot**, **ChatGPT Plus**, and **Claude Pro** simultaneously. 
+- **Feature Overlap:** Paying for features that are already bundled in other tools.
+- **Wasted Seats:** Premium individual licenses assigned to light-users.
+- **Manual Nightmare:** Engineering Managers lack the time to manually audit and optimize these recurring costs via spreadsheets.
 
----
+## 💡 The Solution
+An automated, frictionless **AI Spend Audit Engine**. 
+Users input their team size and current AI stack. Our engine calculates the exact financial waste, identifies redundancies, and provides a clear, actionable path to downgrade or consolidate—saving companies thousands of dollars annually.
 
-## 🛠 Quick Start
+## ✨ Key Features
+- **⚡ Automated Financial Engine:** Instantly calculates monthly/annual savings based on real-time SaaS pricing.
+- **🔍 Redundancy Detection:** Flags overlapping tools (e.g., paying for Copilot when already using Cursor).
+- **💼 Licensing Optimization:** Recommends API-based workspaces or Team plans over expensive individual seats.
+- **🔒 Privacy-First Lead Capture:** Shows the exact $ savings *before* asking for an email, ensuring high-intent lead generation and building trust.
 
-### Prerequisites
-- Node.js 18.x or higher
-- npm or yarn
+## 📂 Strategic Documentation (Business Logic)
+This repository is not just a technical MVP; it contains fully fleshed-out, market-validated business logic. Please review our core documents to understand the strategy behind the code:
+1. **[User Interviews & Market Validation](./USER_INTERVIEWS.md)** - Deep psychological insights, friction points, and product pivots based on 3 real developer interviews.
+2. **[Go-To-Market (GTM) Strategy](./GTM.md)** - Zero-budget, founder-led acquisition channels.
+3. **[Unit Economics & Pricing](./ECONOMICS.md)** - Value-based monetization and CAC/LTV projections.
+4. **[Core Metrics](./METRICS.md)** - Our North Star metric and secondary growth levers.
+5. **[Landing Page Copy](./LANDING_COPY.md)** - High-converting, outcome-focused marketing text.
 
-### Installation & Setup
+## 🛠️ Tech Stack
+- **Frontend:** HTML5, CSS3, Vanilla JavaScript (Built for absolute speed and zero dependencies)
+- **Architecture:** Client-side calculation engine
+- **Version Control:** Git & GitHub
 
-1. **Clone the repository:**
+## 🚀 Getting Started (Run Locally)
+1. Clone this repository:
    ```bash
    git clone https://github.com/ravithakur776/AI-Spend-Audit.git
-   cd AI-Spend-Audit
    ```
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-3. **Run the development server:**
-   ```bash
-   npm run dev
-   ```
-4. **Access the application:**
-   Open [http://localhost:3000](http://localhost:3000) with your browser to view the interactive spend input form.
-
-## 🏗 Decisions & Trade-offs
-Here are 5 key architectural and technical trade-offs made during the development of this MVP:
-
-1. **Next.js App Router vs. Vanilla React (Vite):** Chose Next.js for its built-in API routes and server-side rendering capabilities. While Vite might offer a slightly faster initial dev server setup, Next.js provides a cleaner path for implementing the backend requirements (like lead capture and the Anthropic API integration) within a single repository.
-
-2. **Tailwind CSS vs. Component Libraries (MUI/Chakra):** Opted for pure Tailwind CSS alongside basic headless primitives instead of a heavy pre-built component library. This requires more upfront styling work but ensures complete control over the UI/UX, keeping the bundle size small and the design unique to fit the "entrepreneurial" requirement.
-
-3. **LocalStorage for State Persistence vs. URL Query Params:** For persisting the complex nested array of selected AI tools across page reloads, LocalStorage was chosen over URL parameters. URL params would quickly become bloated and hit length limits with multiple tools and seats, making LocalStorage the cleaner, more scalable choice for the initial input step.
-
-4. **Client-Side Validation vs. Strict Server Validation:** Implemented aggressive client-side validation for the spend input form. While server validation is more secure, client-side validation provides immediate, frictionless feedback to the user, optimizing for conversion and user experience in a free lead-gen tool.
-
-5. **Early CI/CD Setup vs. End-of-Project Configuration:** Decided to implement GitHub Actions for linting and build checks on Day 1 rather than waiting until the project was complete. This enforces strict engineering hygiene from the very first commit, preventing technical debt from accumulating over the 7-day build period.
