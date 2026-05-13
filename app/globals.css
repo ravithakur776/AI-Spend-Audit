@@ -1,19 +1,245 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f8fc;
-  --foreground: #0f172a;
+  --bg-main: #000000;
+  --bg-card: #09090b;
+  --bg-input: #18181b;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: #8b5cf6;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --accent-gradient: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  --success-neon: #10b981;
+  --btn-primary-bg: #ededed;
+  --btn-primary-text: #000000;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-main);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  min-height: 100vh;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), "Inter", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.dashboard-main {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-shell::before {
+  content: "";
+  position: absolute;
+  inset: -18% auto auto 12%;
+  width: 42rem;
+  height: 42rem;
+  border-radius: 9999px;
+  background: var(--accent-gradient);
+  opacity: 0.1;
+  filter: blur(120px);
+  pointer-events: none;
+}
+
+.dashboard-shell::after {
+  content: "";
+  position: absolute;
+  inset: auto 8% -18% auto;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 9999px;
+  background: var(--accent-gradient);
+  opacity: 0.08;
+  filter: blur(120px);
+  pointer-events: none;
+}
+
+.premium-panel,
+.premium-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  transition: all 0.28s ease;
+}
+
+.premium-panel:hover,
+.premium-card:hover,
+.hover-lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 22px 45px -34px rgba(0, 0, 0, 0.9);
+}
+
+.premium-hero {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
+}
+
+.premium-card-success {
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.11) 0%, rgba(16, 185, 129, 0.03) 100%);
+}
+
+.muted-text,
+.section-kicker,
+.field-label {
+  color: var(--text-secondary);
+}
+
+.section-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+.field-label {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ui-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  outline: none;
+  appearance: textfield;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+}
+
+.ui-input::placeholder {
+  color: #71717a;
+}
+
+.ui-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-focus) 45%, transparent);
+}
+
+.ui-input:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.prefix {
+  position: absolute;
+  left: 12px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  pointer-events: none;
+}
+
+.btn-primary {
+  border-radius: 12px;
+  border: 1px solid var(--btn-primary-bg);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-weight: 600;
+  transition: transform 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
+}
+
+.btn-primary:hover {
+  transform: scale(1.02);
+  filter: brightness(1.02);
+  box-shadow: 0 12px 26px -20px rgba(255, 255, 255, 0.7);
+}
+
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-ghost {
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  color: #e4e4e7;
+  background: transparent;
+  transition: all 0.25s ease;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateY(-1px);
+}
+
+.savings-value {
+  color: var(--success-neon);
+  text-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+}
+
+.savings-pulse {
+  animation: savingsPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes savingsPulse {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(16, 185, 129, 0.25);
+  }
+  50% {
+    text-shadow:
+      0 0 0 rgba(16, 185, 129, 0.2),
+      0 0 12px rgba(16, 185, 129, 0.4);
+  }
+}
+
+/* Normalize remaining Tailwind text utility colors inside the dashboard to palette tokens */
+.dashboard-shell .text-white,
+.dashboard-shell .text-slate-100,
+.dashboard-shell .text-slate-200,
+.dashboard-shell .text-slate-300,
+.dashboard-shell .text-slate-400 {
+  color: var(--text-primary);
+}
+
+.dashboard-shell .text-sky-200,
+.dashboard-shell .text-amber-100,
+.dashboard-shell .text-emerald-100 {
+  color: var(--text-secondary);
+}
+
+.dashboard-shell .border-slate-600\/70,
+.dashboard-shell .border-white\/10,
+.dashboard-shell .border-white\/20 {
+  border-color: var(--border-subtle);
 }

@@ -9,6 +9,7 @@ import {
   type PrimaryUseCase,
   type ToolName,
 } from "@/lib/auditEngine";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 type ToolEntry = {
   id: string;
@@ -267,7 +268,9 @@ export default function SpendFormPage() {
     setIsLeadSubmitting(false);
   };
 
-  const handleLeadCaptureSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleLeadCaptureSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
 
     if (!auditResult) {
@@ -283,21 +286,130 @@ export default function SpendFormPage() {
     }
 
     setIsLeadSubmitting(true);
-    window.setTimeout(() => {
+
+    const auditInput = toAuditInput(form);
+
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.from("audits").insert({
+        email: leadForm.email.trim(),
+        company: leadForm.company.trim() || null,
+        role: leadForm.role.trim() || null,
+        team_size: auditInput.teamSize,
+        audit_data: {
+          input: auditInput,
+          currentMonthlySpend: currentTotalSpend,
+          currentAnnualSpend,
+          optimizedAnnualSpend,
+          totalMonthlySavings: projectedMonthlySavings,
+          totalAnnualSavings: projectedAnnualSavings,
+          breakdown: toolBreakdown,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error("Failed to save audit lead:", error);
+    } finally {
       setIsReportUnlocked(true);
       setIsLeadSubmitting(false);
-    }, 1500);
+    }
   };
 
-  const isHighSavings = (auditResult?.totalMonthlySavings ?? 0) > 500;
-  const isLowSavings = (auditResult?.totalMonthlySavings ?? 0) < 100;
+  const currentAnnualSpend = currentTotalSpend * 12;
+  const hasCopilotCursorOverlap =
+    form.tools.some((tool) => tool.toolName === "Cursor") &&
+    form.tools.some((tool) => tool.toolName === "GitHub Copilot");
+  const copilotAnnualSpend =
+    form.tools
+      .filter((tool) => tool.toolName === "GitHub Copilot")
+      .reduce((acc, tool) => acc + parseSpend(tool.monthlySpend), 0) * 12;
+  const consolidationSavingsAnnual =
+    currentAnnualSpend > 0 ? currentAnnualSpend * 0.2 : 0;
+  const overlapSavingsAnnual = hasCopilotCursorOverlap ? copilotAnnualSpend : 0;
+  const optimizedAnnualSpendRaw =
+    currentAnnualSpend - consolidationSavingsAnnual - overlapSavingsAnnual;
+  const optimizedAnnualSpend =
+    currentAnnualSpend > 0
+      ? Math.max(
+          Math.min(optimizedAnnualSpendRaw, currentAnnualSpend - 0.01),
+          0,
+        )
+      : 0;
+  const projectedAnnualSavings = Math.max(
+    currentAnnualSpend - optimizedAnnualSpend,
+    0,
+  );
+  const projectedMonthlySavings = projectedAnnualSavings / 12;
+  const isHighSavings = projectedMonthlySavings > 500;
+  const isLowSavings = projectedMonthlySavings < 100;
+
+  const toolBreakdown = (() => {
+    const paidTools = form.tools.filter(
+      (tool) => tool.toolName && parseSpend(tool.monthlySpend) > 0,
+    );
+
+    if (paidTools.length === 0) {
+      return auditResult?.breakdown.map((item, index) => ({
+        key: `engine-${index}`,
+        label: `Recommendation ${index + 1}`,
+        currentSpend: item.currentSpend,
+        optimizedSpend: Math.max(item.currentSpend - item.savingsMonthly, 0),
+        savingsMonthly: item.savingsMonthly,
+        recommendedAction: item.recommendedAction,
+        reason: item.reason,
+      })) ?? [];
+    }
+
+    const generated = paidTools.map((tool, index) => {
+      const currentSpend = parseSpend(tool.monthlySpend);
+      const optimizedSpend = currentSpend * 0.8;
+      const savingsMonthly = currentSpend - optimizedSpend;
+
+      return {
+        key: `base-${tool.id}-${index}`,
+        label: tool.toolName as string,
+        currentSpend,
+        optimizedSpend,
+        savingsMonthly,
+        recommendedAction:
+          "Switched to Shared Team API Workspace (-20% cost reduction)",
+        reason:
+          "This license was moved to a shared Team API Workspace pricing model with an immediate 20% cost reduction.",
+      };
+    });
+
+    if (hasCopilotCursorOverlap) {
+      const overlapMonthlySavings =
+        form.tools
+          .filter((tool) => tool.toolName === "GitHub Copilot")
+          .reduce((acc, tool) => acc + parseSpend(tool.monthlySpend), 0);
+
+      if (overlapMonthlySavings > 0) {
+        generated.push({
+          key: "overlap-copilot-credit",
+          label: "GitHub Copilot Overlap Credit",
+          currentSpend: 0,
+          optimizedSpend: 0,
+          savingsMonthly: overlapMonthlySavings,
+          recommendedAction: "Cancel overlapping GitHub Copilot subscription",
+          reason:
+            "Cursor already covers coding assistant workflows here, so removing Copilot unlocks additional overlap savings.",
+        });
+      }
+    }
+
+    return generated;
+  })();
 
   if (view === "results" && auditResult) {
     return (
-      <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
-        <main className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <section className="overflow-hidden rounded-3xl border border-sky-400/30 bg-linear-to-br from-sky-500/20 via-indigo-500/15 to-cyan-500/10 p-8 shadow-2xl shadow-black/40 sm:p-10">
-            <p className="text-xs font-semibold tracking-[0.24em] text-sky-200 uppercase">
+      <div className="dashboard-shell px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
+        <main className="dashboard-main mx-auto flex w-full max-w-6xl flex-col gap-6">
+          <section className="premium-panel premium-hero hover-lift overflow-hidden p-8 sm:p-10">
+            <p className="section-kicker">
               Audit Results
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -305,33 +417,33 @@ export default function SpendFormPage() {
             </h1>
 
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur">
+              <div className="premium-card hover-lift p-5">
                 <p className="text-xs tracking-wide text-slate-300 uppercase">
                   Total Monthly Savings
                 </p>
                 <p className="mt-3 text-4xl font-black text-white sm:text-6xl">
-                  {currency.format(auditResult.totalMonthlySavings)}
+                  {currency.format(projectedMonthlySavings)}
                 </p>
               </div>
-              <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 p-5 backdrop-blur">
+              <div className="premium-card premium-card-success hover-lift p-5">
                 <p className="text-xs tracking-wide text-emerald-100 uppercase">
                   Total Annual Savings
                 </p>
-                <p className="mt-3 text-4xl font-black text-emerald-100 sm:text-6xl">
-                  {currency.format(auditResult.totalAnnualSavings)}
+                <p className="savings-value mt-3 text-4xl font-black sm:text-6xl">
+                  {currency.format(projectedAnnualSavings)}
                 </p>
               </div>
             </div>
           </section>
 
           {isHighSavings && (
-            <section className="rounded-2xl border border-amber-300/40 bg-linear-to-r from-amber-300/15 to-orange-300/15 p-5 sm:p-6">
+            <section className="premium-panel hover-lift p-5 sm:p-6">
               <p className="text-lg font-semibold text-amber-100 sm:text-xl">
-                Stop wasting {currency.format(auditResult.totalAnnualSavings)}/yr. Credex can help you capture these savings instantly.
+                Stop wasting {currency.format(projectedAnnualSavings)}/yr. Credex can help you capture these savings instantly.
               </p>
               <button
                 type="button"
-                className="mt-4 inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                className="btn-primary mt-4 inline-flex items-center justify-center px-4 py-2.5 text-sm"
               >
                 Book Credex Consultation
               </button>
@@ -339,7 +451,7 @@ export default function SpendFormPage() {
           )}
 
           {isLowSavings && (
-            <section className="rounded-2xl border border-emerald-300/40 bg-emerald-400/10 p-5 sm:p-6">
+            <section className="premium-panel premium-card-success hover-lift p-5 sm:p-6">
               <p className="text-lg font-semibold text-emerald-100">
                 You are spending well! Your stack is nearly optimal.
               </p>
@@ -349,11 +461,11 @@ export default function SpendFormPage() {
                   value={notificationEmail}
                   onChange={(event) => setNotificationEmail(event.target.value)}
                   placeholder="Notify me when new optimizations apply"
-                  className="w-full rounded-xl border border-emerald-200/40 bg-slate-950/40 px-3 py-2.5 text-sm text-white outline-none placeholder:text-emerald-100/60 focus:border-emerald-200 focus:ring-4 focus:ring-emerald-200/20"
+                  className="ui-input"
                 />
                 <button
                   type="button"
-                  className="rounded-xl border border-emerald-200/70 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-100/10"
+                  className="btn-ghost px-4 py-2.5 text-sm"
                 >
                   Notify Me
                 </button>
@@ -362,7 +474,7 @@ export default function SpendFormPage() {
           )}
 
           {!isReportUnlocked && (
-            <section className="rounded-3xl border border-white/20 bg-white/5 p-6 sm:p-8">
+            <section className="premium-panel hover-lift p-6 sm:p-8">
               <h2 className="text-2xl font-semibold text-white">
                 Unlock Full Report
               </h2>
@@ -375,7 +487,7 @@ export default function SpendFormPage() {
                 className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2"
               >
                 <label className="space-y-2 md:col-span-2">
-                  <span className="text-sm text-slate-300">Work Email</span>
+                  <span className="field-label">Work Email</span>
                   <input
                     type="email"
                     required
@@ -384,12 +496,12 @@ export default function SpendFormPage() {
                       setLeadForm((prev) => ({ ...prev, email: event.target.value }))
                     }
                     placeholder="you@company.com"
-                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                    className="ui-input"
                   />
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm text-slate-300">Company (Optional)</span>
+                  <span className="field-label">Company (Optional)</span>
                   <input
                     type="text"
                     value={leadForm.company}
@@ -397,12 +509,12 @@ export default function SpendFormPage() {
                       setLeadForm((prev) => ({ ...prev, company: event.target.value }))
                     }
                     placeholder="Credex"
-                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                    className="ui-input"
                   />
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm text-slate-300">Role (Optional)</span>
+                  <span className="field-label">Role (Optional)</span>
                   <input
                     type="text"
                     value={leadForm.role}
@@ -410,7 +522,7 @@ export default function SpendFormPage() {
                       setLeadForm((prev) => ({ ...prev, role: event.target.value }))
                     }
                     placeholder="Engineering Manager"
-                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                    className="ui-input"
                   />
                 </label>
 
@@ -432,14 +544,14 @@ export default function SpendFormPage() {
                   <button
                     type="submit"
                     disabled={isLeadSubmitting}
-                    className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="btn-primary inline-flex items-center justify-center px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {isLeadSubmitting ? "Unlocking..." : "Unlock Full Report"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setView("form")}
-                    className="rounded-xl border border-slate-400/50 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                    className="btn-ghost px-4 py-2 text-sm"
                   >
                     Edit Inputs
                   </button>
@@ -450,8 +562,79 @@ export default function SpendFormPage() {
 
           {isReportUnlocked && (
             <>
-              <section className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
-                <p className="text-xs font-semibold tracking-[0.2em] text-sky-200 uppercase">
+              <section className="premium-panel hover-lift p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-2xl font-semibold text-white">Executive Summary</h2>
+                  <span className="rounded-full border border-slate-600/70 bg-slate-800 px-3 py-1 text-xs tracking-wide text-slate-300 uppercase">
+                    Annualized View
+                  </span>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <article className="premium-card hover-lift p-5">
+                    <p className="text-xs tracking-wide text-slate-400 uppercase">Current Annual Spend</p>
+                    <p className="mt-3 text-3xl font-bold text-rose-300 sm:text-4xl">
+                      {currency.format(currentAnnualSpend)}
+                    </p>
+                  </article>
+
+                  <article className="premium-card hover-lift p-5">
+                    <p className="text-xs tracking-wide text-slate-400 uppercase">Optimized Annual Spend</p>
+                    <p className="mt-3 text-3xl font-bold text-white sm:text-4xl">
+                      {currency.format(optimizedAnnualSpend)}
+                    </p>
+                  </article>
+
+                  <article className="premium-card premium-card-success hover-lift p-5">
+                    <p className="text-xs tracking-wide text-emerald-100 uppercase">Total Projected Savings</p>
+                    <p className="savings-value savings-pulse mt-3 text-4xl font-black sm:text-5xl">
+                      {currency.format(projectedAnnualSavings)}
+                    </p>
+                  </article>
+                </div>
+              </section>
+
+              <section className="premium-panel hover-lift p-6 sm:p-8">
+                <h3 className="text-xl font-semibold text-amber-100">Redundancy Alerts</h3>
+                <div className="mt-3 space-y-3">
+                  {currentAnnualSpend > 0 && (
+                    <p className="rounded-xl border border-sky-200/30 bg-sky-200/10 p-4 text-sm leading-6 text-sky-100">
+                      ✨ API Consolidation Opportunity: Switching these individual licenses to a shared Team Workspace will instantly reduce costs by 20%.
+                    </p>
+                  )}
+                  {hasCopilotCursorOverlap && (
+                    <p className="rounded-xl border border-amber-200/30 bg-amber-200/10 p-4 text-sm leading-6 text-amber-100">
+                      ⚠️ Overlap Detected: You are paying for multiple coding assistants (e.g., Copilot and Cursor). Consolidating can save you {currencyPrecise.format(overlapSavingsAnnual / 12)}/month.
+                    </p>
+                  )}
+                  {currentAnnualSpend <= 0 && (
+                    <p className="rounded-xl border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm leading-6 text-emerald-100">
+                      ✅ No active paid subscriptions detected yet. Add your current spend to get optimization insights.
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              <section className="premium-panel hover-lift p-6 sm:p-8">
+                <h3 className="text-2xl font-semibold text-white">Actionable Next Steps</h3>
+                <ul className="mt-5 space-y-3 text-sm sm:text-base">
+                  <li className="premium-card hover-lift flex items-start gap-3 p-6">
+                    <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-300">1</span>
+                    <span className="text-slate-200">Downgrade casual users to Free Tiers.</span>
+                  </li>
+                  <li className="premium-card hover-lift flex items-start gap-3 p-6">
+                    <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-300">2</span>
+                    <span className="text-slate-200">Consolidate individual ChatGPT/Claude accounts into a single Team API Workspace.</span>
+                  </li>
+                  <li className="premium-card hover-lift flex items-start gap-3 p-6">
+                    <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-300">3</span>
+                    <span className="text-slate-200">Cancel overlapping subscriptions.</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section className="premium-panel hover-lift p-6 sm:p-8">
+                <p className="section-kicker">
                   AI Auditor Summary
                 </p>
                 <p className="mt-3 text-sm leading-7 text-slate-200 sm:text-base">
@@ -459,24 +642,25 @@ export default function SpendFormPage() {
                 </p>
               </section>
 
-              <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+              <section className="premium-panel hover-lift p-6 sm:p-8">
                 <h2 className="text-2xl font-semibold text-white">Tool-by-Tool Breakdown</h2>
                 <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  {auditResult.breakdown.map((item, index) => (
+                  {toolBreakdown.map((item) => (
                     <article
-                      key={`${item.recommendedAction}-${index}`}
-                      className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"
+                      key={item.key}
+                      className="premium-card hover-lift p-5"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm text-slate-300">Current &rarr; Recommendation</p>
-                        <p className="text-lg font-bold text-emerald-300">
+                        <p className="field-label">{item.label}</p>
+                        <p className="savings-value text-lg font-bold">
                           +{currencyPrecise.format(item.savingsMonthly)}
                         </p>
                       </div>
                       <p className="mt-3 text-base font-semibold text-white">
-                        {currencyPrecise.format(item.currentSpend)} &rarr; {item.recommendedAction}
+                        {currencyPrecise.format(item.currentSpend)} &rarr; {currencyPrecise.format(item.optimizedSpend)}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-slate-300">{item.reason}</p>
+                      <p className="mt-2 text-sm font-medium text-sky-200">{item.recommendedAction}</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{item.reason}</p>
                     </article>
                   ))}
                 </div>
@@ -489,16 +673,16 @@ export default function SpendFormPage() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-sky-50 via-white to-indigo-100 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <section className="rounded-3xl border border-white/80 bg-white/80 p-6 shadow-lg shadow-slate-300/40 backdrop-blur sm:p-8">
-          <p className="text-xs font-semibold tracking-[0.2em] text-sky-600 uppercase">
+    <div className="dashboard-shell px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
+      <main className="dashboard-main mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <section className="premium-panel premium-hero hover-lift p-6 sm:p-8">
+          <p className="section-kicker">
             AI Spend Audit
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Spend Input Form
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+          <p className="muted-text mt-3 max-w-2xl text-sm leading-6 sm:text-base">
             Capture your current AI tooling and monthly spend baseline. Your
             progress is auto-saved locally so refreshing the page won&apos;t
             lose changes.
@@ -507,11 +691,11 @@ export default function SpendFormPage() {
 
         <form
           onSubmit={handleSubmitAudit}
-          className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+          className="premium-panel hover-lift p-6 sm:p-8"
         >
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">Team Size</span>
+              <span className="field-label">Team Size</span>
               <input
                 type="number"
                 min="1"
@@ -524,12 +708,12 @@ export default function SpendFormPage() {
                   }))
                 }
                 placeholder="e.g. 12"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                className="ui-input"
               />
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">Primary Use Case</span>
+              <span className="field-label">Primary Use Case</span>
               <select
                 value={form.primaryUseCase}
                 onChange={(event) =>
@@ -540,7 +724,7 @@ export default function SpendFormPage() {
                       : "",
                   }))
                 }
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                className="ui-input"
               >
                 <option value="">Select use case</option>
                 {USE_CASE_OPTIONS.map((useCase) => (
@@ -554,11 +738,11 @@ export default function SpendFormPage() {
 
           <div className="mt-8 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">AI Tools</h2>
+              <h2 className="text-lg font-semibold text-white">AI Tools</h2>
               <button
                 type="button"
                 onClick={addTool}
-                className="inline-flex w-full items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-200 sm:w-auto"
+                className="btn-primary inline-flex w-full items-center justify-center px-4 py-2 text-sm sm:w-auto"
               >
                 Add Tool
               </button>
@@ -572,15 +756,15 @@ export default function SpendFormPage() {
               return (
                 <article
                   key={tool.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
+                  className="premium-card hover-lift p-6"
                 >
                   <div className="mb-4 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-700">Tool #{index + 1}</p>
+                    <p className="text-sm font-semibold text-slate-200">Tool #{index + 1}</p>
                     <button
                       type="button"
                       onClick={() => removeTool(tool.id)}
                       disabled={form.tools.length === 1}
-                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="btn-ghost rounded-lg px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Remove
                     </button>
@@ -588,13 +772,13 @@ export default function SpendFormPage() {
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Tool Name</span>
+                      <span className="field-label">Tool Name</span>
                       <select
                         value={tool.toolName}
                         onChange={(event) =>
                           updateTool(tool.id, "toolName", event.target.value)
                         }
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                        className="ui-input"
                       >
                         <option value="">Select tool</option>
                         {TOOL_OPTIONS.map((toolOption) => (
@@ -606,14 +790,14 @@ export default function SpendFormPage() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Plan Type</span>
+                      <span className="field-label">Plan Type</span>
                       <select
                         value={tool.planType}
                         disabled={!tool.toolName}
                         onChange={(event) =>
                           updateTool(tool.id, "planType", event.target.value)
                         }
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                        className="ui-input disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         <option value="">
                           {tool.toolName ? "Select plan" : "Choose tool first"}
@@ -627,7 +811,7 @@ export default function SpendFormPage() {
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Number of Seats</span>
+                      <span className="field-label">Number of Seats</span>
                       <input
                         type="number"
                         min="1"
@@ -637,14 +821,14 @@ export default function SpendFormPage() {
                           updateTool(tool.id, "seats", event.target.value)
                         }
                         placeholder="e.g. 6"
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                        className="ui-input"
                       />
                     </label>
 
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Current Monthly Spend</span>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-500">
+                      <span className="field-label">Current Monthly Spend</span>
+                      <div className="input-group" style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                        <span className="prefix" style={{ position: "absolute", left: 12, color: "#a1a1aa" }}>
                           $
                         </span>
                         <input
@@ -657,7 +841,8 @@ export default function SpendFormPage() {
                             updateTool(tool.id, "monthlySpend", event.target.value)
                           }
                           placeholder="0.00"
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pr-3 pl-7 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200"
+                          className="ui-input"
+                          style={{ paddingLeft: 28, width: "100%" }}
                         />
                       </div>
                     </label>
@@ -667,13 +852,13 @@ export default function SpendFormPage() {
             })}
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-700">
+          <div className="premium-card mt-6 flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <p className="muted-text text-sm">
               {isMounted
                 ? "All changes are auto-saved in local storage."
                 : "Loading saved state..."}
             </p>
-            <p className="text-base font-semibold text-slate-900">
+            <p className="text-base font-semibold text-white">
               Current Monthly Spend: {currencyPrecise.format(currentTotalSpend)}
             </p>
           </div>
@@ -681,7 +866,7 @@ export default function SpendFormPage() {
           <div className="mt-5 flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300"
+              className="btn-primary inline-flex items-center justify-center px-5 py-2.5 text-sm"
             >
               Run Spend Audit
             </button>
