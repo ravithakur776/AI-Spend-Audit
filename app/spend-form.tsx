@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -10,7 +9,6 @@ import {
   type PrimaryUseCase,
   type ToolName,
 } from "@/lib/auditEngine";
-import { saveAuditLead } from "@/lib/supabase";
 
 type ToolEntry = {
   id: string;
@@ -184,16 +182,14 @@ const isValidEmail = (email: string): boolean => {
 };
 
 export default function SpendFormPage() {
-  const router = useRouter();
-
   const [isMounted, setIsMounted] = useState(false);
   const [form, setForm] = useState<SpendForm>(DEFAULT_FORM);
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [view, setView] = useState<"form" | "results">("form");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [leadForm, setLeadForm] = useState<LeadForm>(DEFAULT_LEAD_FORM);
+  const [isReportUnlocked, setIsReportUnlocked] = useState(false);
   const [isLeadSubmitting, setIsLeadSubmitting] = useState(false);
-  const [leadError, setLeadError] = useState("");
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -267,13 +263,11 @@ export default function SpendFormPage() {
     setAuditResult(result);
     setView("results");
     setLeadForm(DEFAULT_LEAD_FORM);
+    setIsReportUnlocked(false);
     setIsLeadSubmitting(false);
-    setLeadError("");
   };
 
-  const handleLeadCaptureSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
+  const handleLeadCaptureSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!auditResult) {
@@ -285,67 +279,14 @@ export default function SpendFormPage() {
     }
 
     if (!isValidEmail(leadForm.email)) {
-      setLeadError("Please enter a valid work email address.");
       return;
     }
 
     setIsLeadSubmitting(true);
-    setLeadError("");
-
-    try {
-      const auditInput = toAuditInput(form);
-
-      let aiSummary = FALLBACK_SUMMARY;
-      try {
-        const summaryResponse = await fetch("/api/generate-summary", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            auditResult,
-            teamSize: parseSeats(form.teamSize),
-            primaryUseCase: form.primaryUseCase || "mixed",
-          }),
-        });
-
-        const summaryData = (await summaryResponse.json()) as { summary?: string };
-        aiSummary = summaryData.summary || FALLBACK_SUMMARY;
-      } catch {
-        aiSummary = FALLBACK_SUMMARY;
-      }
-
-      const auditId = await saveAuditLead({
-        email: leadForm.email.trim(),
-        company: leadForm.company.trim(),
-        role: leadForm.role.trim(),
-        teamSize: parseSeats(form.teamSize),
-        auditData: {
-          auditInput,
-          auditResult,
-          aiSummary,
-          createdAt: new Date().toISOString(),
-        },
-      });
-
-      void fetch("/api/send-transactional-email", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          email: leadForm.email.trim(),
-          savings: auditResult.totalMonthlySavings,
-        }),
-      });
-
-      router.push(`/audit/${auditId}`);
-    } catch {
-      setLeadError(
-        "We could not save your report right now. Please try again in a moment.",
-      );
+    window.setTimeout(() => {
+      setIsReportUnlocked(true);
       setIsLeadSubmitting(false);
-    }
+    }, 1500);
   };
 
   const isHighSavings = (auditResult?.totalMonthlySavings ?? 0) > 500;
@@ -420,94 +361,128 @@ export default function SpendFormPage() {
             </section>
           )}
 
-          <section className="rounded-3xl border border-white/20 bg-white/5 p-6 sm:p-8">
-            <h2 className="text-2xl font-semibold text-white">
-              Unlock Full Report
-            </h2>
-            <p className="mt-2 text-sm text-slate-300 sm:text-base">
-              Enter your work email to unlock the AI summary and tool-by-tool optimization plan.
-            </p>
+          {!isReportUnlocked && (
+            <section className="rounded-3xl border border-white/20 bg-white/5 p-6 sm:p-8">
+              <h2 className="text-2xl font-semibold text-white">
+                Unlock Full Report
+              </h2>
+              <p className="mt-2 text-sm text-slate-300 sm:text-base">
+                Enter your work email to unlock the AI summary and tool-by-tool optimization plan.
+              </p>
 
-            <form
-              onSubmit={handleLeadCaptureSubmit}
-              className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2"
-            >
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm text-slate-300">Work Email</span>
-                <input
-                  type="email"
-                  required
-                  value={leadForm.email}
-                  onChange={(event) =>
-                    setLeadForm((prev) => ({ ...prev, email: event.target.value }))
-                  }
-                  placeholder="you@company.com"
-                  className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
-                />
-              </label>
+              <form
+                onSubmit={handleLeadCaptureSubmit}
+                className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2"
+              >
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm text-slate-300">Work Email</span>
+                  <input
+                    type="email"
+                    required
+                    value={leadForm.email}
+                    onChange={(event) =>
+                      setLeadForm((prev) => ({ ...prev, email: event.target.value }))
+                    }
+                    placeholder="you@company.com"
+                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                  />
+                </label>
 
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Company (Optional)</span>
-                <input
-                  type="text"
-                  value={leadForm.company}
-                  onChange={(event) =>
-                    setLeadForm((prev) => ({ ...prev, company: event.target.value }))
-                  }
-                  placeholder="Credex"
-                  className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
-                />
-              </label>
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Company (Optional)</span>
+                  <input
+                    type="text"
+                    value={leadForm.company}
+                    onChange={(event) =>
+                      setLeadForm((prev) => ({ ...prev, company: event.target.value }))
+                    }
+                    placeholder="Credex"
+                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                  />
+                </label>
 
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Role (Optional)</span>
-                <input
-                  type="text"
-                  value={leadForm.role}
-                  onChange={(event) =>
-                    setLeadForm((prev) => ({ ...prev, role: event.target.value }))
-                  }
-                  placeholder="Engineering Manager"
-                  className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
-                />
-              </label>
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Role (Optional)</span>
+                  <input
+                    type="text"
+                    value={leadForm.role}
+                    onChange={(event) =>
+                      setLeadForm((prev) => ({ ...prev, role: event.target.value }))
+                    }
+                    placeholder="Engineering Manager"
+                    className="w-full rounded-xl border border-slate-500/50 bg-slate-900/70 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                  />
+                </label>
 
-              <div className="absolute -left-[9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
-                <label htmlFor="website-field">Website</label>
-                <input
-                  id="website-field"
-                  type="text"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={leadForm.honeypot}
-                  onChange={(event) =>
-                    setLeadForm((prev) => ({ ...prev, honeypot: event.target.value }))
-                  }
-                />
-              </div>
+                <div className="absolute -left-[9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
+                  <label htmlFor="website-field">Website</label>
+                  <input
+                    id="website-field"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={leadForm.honeypot}
+                    onChange={(event) =>
+                      setLeadForm((prev) => ({ ...prev, honeypot: event.target.value }))
+                    }
+                  />
+                </div>
 
-              {leadError && (
-                <p className="md:col-span-2 text-sm text-rose-300">{leadError}</p>
-              )}
+                <div className="md:col-span-2 flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={isLeadSubmitting}
+                    className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isLeadSubmitting ? "Unlocking..." : "Unlock Full Report"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView("form")}
+                    className="rounded-xl border border-slate-400/50 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                  >
+                    Edit Inputs
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
 
-              <div className="md:col-span-2 flex items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={isLeadSubmitting}
-                  className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isLeadSubmitting ? "Saving report..." : "Unlock Full Report"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView("form")}
-                  className="rounded-xl border border-slate-400/50 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
-                >
-                  Edit Inputs
-                </button>
-              </div>
-            </form>
-          </section>
+          {isReportUnlocked && (
+            <>
+              <section className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
+                <p className="text-xs font-semibold tracking-[0.2em] text-sky-200 uppercase">
+                  AI Auditor Summary
+                </p>
+                <p className="mt-3 text-sm leading-7 text-slate-200 sm:text-base">
+                  {FALLBACK_SUMMARY}
+                </p>
+              </section>
+
+              <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                <h2 className="text-2xl font-semibold text-white">Tool-by-Tool Breakdown</h2>
+                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {auditResult.breakdown.map((item, index) => (
+                    <article
+                      key={`${item.recommendedAction}-${index}`}
+                      className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-slate-300">Current &rarr; Recommendation</p>
+                        <p className="text-lg font-bold text-emerald-300">
+                          +{currencyPrecise.format(item.savingsMonthly)}
+                        </p>
+                      </div>
+                      <p className="mt-3 text-base font-semibold text-white">
+                        {currencyPrecise.format(item.currentSpend)} &rarr; {item.recommendedAction}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-slate-300">{item.reason}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
         </main>
       </div>
     );
