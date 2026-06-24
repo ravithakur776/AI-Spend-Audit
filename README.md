@@ -45,6 +45,3 @@ This repository is not just a technical MVP; it contains fully fleshed-out, mark
    ```bash
    git clone https://github.com/ravithakur776/AI-Spend-Audit.git
    ```
-
-
-   
